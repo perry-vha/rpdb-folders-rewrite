@@ -1,5 +1,6 @@
 services:
   rpdb-folders:
+    image: ghcr.io/perry-vha/rpdb-folders-rewrite:latest
     build: .
     container_name: rpdb-folders
     ports:

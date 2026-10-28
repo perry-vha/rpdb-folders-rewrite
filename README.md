@@ -62,9 +62,18 @@ Open http://localhost:8750/ and add your media folders. Add API keys under **API
 
 ## Docker
 
-Edit the volume paths in [docker-compose.yml](docker-compose.yml), then:
+Images are published to GitHub Container Registry on every push to `main` by [the Docker workflow](.github/workflows/docker.yml). Edit the volume paths in [docker-compose.yml](docker-compose.yml), then:
 
+    docker compose pull
     docker compose up -d
+
+To build locally instead:
+
+    docker compose up -d --build
+
+Or run the published image directly:
+
+    docker run -d -p 8750:8750 -v ./config:/rpdb/config -v /path/to/media:/rpdb/mounts/media ghcr.io/perry-vha/rpdb-folders-rewrite:latest
 
 Or build and run directly:
 
