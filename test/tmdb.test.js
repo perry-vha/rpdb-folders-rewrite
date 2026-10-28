@@ -74,7 +74,8 @@ test('setTmdbKey validates, saves and clears the key without exposing it', async
 
   assert.equal((await j('setTmdbKey?key=eyJbad')).success, false);
   assert.equal((await j('setTmdbKey?key=eyJgood')).success, true);
-  assert.ok(mock.requests.some((u) => u === '/3/configuration?'), 'v4 tokens are sent as a header, not in the URL');
+  assert.ok(mock.requests.some((u) => /^\/3\/configuration\??$/.test(u)), 'v4 tokens are sent as a header, not in the URL');
+  assert.ok(!mock.requests.some((u) => u.includes('eyJgood')));
 
   assert.deepEqual(await j('setTmdbKey?key='), { success: true, tmdbKeySet: false });
   assert.equal(app.ctx.matcher.hasTmdb(), false);

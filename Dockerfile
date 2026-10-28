@@ -1,4 +1,4 @@
-FROM node:lts-slim
+FROM node:24.22.1-slim
 ENV NODE_ENV=production RPDB_DOCKER=1
 WORKDIR /app
 COPY package.json package-lock.json ./

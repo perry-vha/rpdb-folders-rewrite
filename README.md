@@ -1,6 +1,6 @@
 # RPDB Folders (rewrite)
 
-![Node >= 22](https://img.shields.io/badge/node-%3E%3D22-339933?logo=node.js&logoColor=white)
+![Node 22.23.4+ / 24.22.1+](https://img.shields.io/badge/node-22.23.4%2B%20%7C%2024.22.1%2B-339933?logo=node.js&logoColor=white)
 ![Tests](https://img.shields.io/badge/tests-68%20passing-brightgreen)
 ![Docker](https://img.shields.io/badge/docker-supported-2496ED?logo=docker&logoColor=white)
 
@@ -51,7 +51,7 @@ It is an independent reimplementation of RPDB Folders. It adds a **local render 
 
 ## Quick start
 
-Requires Node 22 or newer.
+Requires Node 22.23.4, 24.22.1, 26.12.1 or newer. Earlier releases are affected by the October 2026 Node.js security fixes. Docker and CI use 24.22.1.
 
     git clone <your-repo-url>
     cd rpdb-folders-rewrite
