@@ -1,0 +1,14 @@
+services:
+  rpdb-folders:
+    build: .
+    container_name: rpdb-folders
+    ports:
+      - "8750:8750"
+    volumes:
+      - ./config:/rpdb/config
+      - /path/to/movies:/rpdb/mounts/movies
+      - /path/to/series:/rpdb/mounts/series
+    # user: "1000:1000"   # match your media owner so posters can be written
+    # environment:
+    #   - TMDB_API_KEY=your_tmdb_key   # optional; can also be set in the UI
+    restart: unless-stopped

@@ -1,0 +1,10 @@
+node_modules/
+config.json
+config/
+rpdb.json
+*.log
+.env
+.DS_Store
+Thumbs.db
+rpdb-rewrite/
+smoke/

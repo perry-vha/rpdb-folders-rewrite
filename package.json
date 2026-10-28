@@ -1,0 +1,23 @@
+{
+  "name": "rpdb-folders-rewrite",
+  "version": "0.3.6",
+  "private": true,
+  "type": "module",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "@napi-rs/canvas": "^1.0.13",
+    "chokidar": "^6.0.0",
+    "express": "^5.3.0",
+    "mediainfo.js": "^0.3.8"
+  },
+  "devDependencies": {
+    "flag-icons": "^7.6.0"
+  }
+}
