@@ -34,8 +34,13 @@ export function startMock({ key = 'test-key' } = {}) {
       const bad = url.searchParams.get('api_key') === 'bad' || auth === 'Bearer eyJbad';
       return bad ? send(401, { status_message: 'Invalid API key' }) : send(200, { images: {} });
     }
+    // Like MDBList: /user still answers when a key is over its daily limit, media routes return 429.
     if (url.pathname === '/user') {
-      return url.searchParams.get('apikey') === 'mdb-key' ? send(200, { username: 'test' }) : send(401, { error: 'Invalid API key' });
+      return ['mdb-key', 'mdb-limited'].includes(url.searchParams.get('apikey')) ? send(200, { username: 'test' }) : send(403, { error: 'Invalid API key' });
+    }
+    if (url.pathname.startsWith('/imdb/') && url.searchParams.get('apikey') === 'mdb-limited') {
+      res.writeHead(429, { 'content-type': 'application/json', 'retry-after': '3600', 'x-ratelimit-remaining': '0' });
+      return res.end(JSON.stringify({ error: 'Daily API limit exceeded!' }));
     }
     if (url.pathname === '/imdb/movie/tt0133093') {
       return send(200, {

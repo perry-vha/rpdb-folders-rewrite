@@ -12,7 +12,7 @@ import {
   RPDB_BASE, buildThumbnailUrl, customPosterTemplate, tmdbPosterTemplate, createPosterQuery, createPosterTemplate, normalizeCreateImg, pick, STYLE_PARAMS, orderParam,
 } from './rpdb.js';
 import { compareVersions } from './version.js';
-import { validateMdblist, mdblistRatings } from './ratings.js';
+import { validateMdblist, mdblistRatings, mdblistKeysOf, mdblistLimitedUntil, MAX_MDBLIST_KEYS } from './ratings.js';
 import { renderPoster, renderBackdrop, renderLogo, ratingItems, createPosterScores, SAMPLE_ITEMS, SAMPLE_INFO } from './compose.js';
 import { sanitizeDesign, DESIGN_DEFAULTS, designFromRpdb, toRpdbStyles, rpdbOrder, PRESETS, presetLook, RPDB_SUPPORTED, KINDS } from './look.js';
 import { renderLocalPoster, renderLocalArt, mediaFor, designFor, rpdbDesignFor } from './local-poster.js';
@@ -238,6 +238,7 @@ export function createApp(ctx) {
       lastFullUpdate: Math.max(c.lastFullUpdate.movie || 0, c.lastFullUpdate.series || 0),
       historyCount: engine.historyCount,
       scanItems: engine.queueLength,
+      mdblistPausedUntil: engine.pausedUntil,
       plexConnected: plex.connected,
       plexQueue: plex.queue.size + plex.timers.size,
     });
@@ -265,7 +266,8 @@ export function createApp(ctx) {
       scanOrder: c.scanOrder,
       tmdbKeySet: Boolean(tmdbKeyFrom(c)),
       tmdbKeyFromEnv: Boolean(process.env.TMDB_API_KEY),
-      mdblistKeySet: Boolean(c.mdblistKey),
+      mdblistKeySet: mdblistKeysOf(c).length > 0,
+      ...mdblistKeyInfo(),
       posterEngine: c.posterEngine,
       cacheMatches: c.cacheMatches,
       movieTextless: c.movieTextless,
@@ -355,24 +357,52 @@ export function createApp(ctx) {
   });
 
   // ---------- MDBList ratings ----------
+  const mdblistKeyInfo = () => {
+    const keys = mdblistKeysOf(cfg());
+    return {
+      mdblistKeys: keys.map((k) => ({ prefix: k.slice(0, 3), limitedUntil: mdblistLimitedUntil([k]) })),
+      mdblistKeyMax: MAX_MDBLIST_KEYS,
+    };
+  };
+  const mdblistKeysChanged = (msg) => {
+    store.save();
+    log(msg);
+    engine.resume();
+  };
+
+  // Adds a key to the rotation; the next is used when one hits its request limit.
   get('setMdblistKey', async (req, res) => {
     const key = (str(req.query.key) || '').trim();
-    if (key && !(await validateMdblist(key))) return fail(res, 'MDBList rejected this key. Get one at mdblist.com/preferences.');
-    cfg().mdblistKey = key;
-    store.save();
-    log(key ? 'MDBList key saved' : 'MDBList key removed');
-    return res.json({ success: true, mdblistKeySet: Boolean(key) });
+    const c = cfg();
+    if (!key) return fail(res, 'Enter an MDBList API key.');
+    if (mdblistKeysOf(c).includes(key)) return fail(res, 'This MDBList key is already saved.');
+    if (mdblistKeysOf(c).length >= MAX_MDBLIST_KEYS) return fail(res, `Up to ${MAX_MDBLIST_KEYS} MDBList keys can be saved.`);
+    if (!(await validateMdblist(key))) return fail(res, 'MDBList rejected this key. Get one at mdblist.com/preferences.');
+    c.mdblistKeys = [...mdblistKeysOf(c), key];
+    mdblistKeysChanged(`MDBList key ${c.mdblistKeys.length} saved`);
+    return res.json({ success: true, mdblistKeySet: true, ...mdblistKeyInfo() });
+  });
+
+  get('removeMdblistKey', (req, res) => {
+    const c = cfg();
+    const keys = mdblistKeysOf(c);
+    const i = Number(req.query.index);
+    if (!Number.isInteger(i) || i < 0 || i >= keys.length) return fail(res, 'Unknown MDBList key');
+    keys.splice(i, 1);
+    c.mdblistKeys = keys;
+    mdblistKeysChanged(`MDBList key ${i + 1} removed`);
+    return res.json({ success: true, mdblistKeySet: keys.length > 0, ...mdblistKeyInfo() });
   });
 
   get('ratings', async (req, res) => {
     const { type, name } = req.query;
-    const key = cfg().mdblistKey;
-    if (!key) return fail(res, 'Add an MDBList API key under API Keys to compare ratings.');
+    const keys = mdblistKeysOf(cfg());
+    if (!keys.length) return fail(res, 'Add an MDBList API key under API Keys to compare ratings.');
     if ((type !== 'movie' && type !== 'series') || !has(name)) return fail(res, 'One or more required parameters are missing or invalid');
     const imdb = await resolveImdb(type, name);
     if (!imdb) return fail(res, 'The folder could not be matched to an IMDB ID');
     try {
-      return res.json({ success: true, imdb, ...(await mdblistRatings(key, type, imdb)) });
+      return res.json({ success: true, imdb, ...(await mdblistRatings(keys, type, imdb)) });
     } catch (e) {
       return fail(res, `MDBList: ${e.message}`);
     }
@@ -421,7 +451,7 @@ export function createApp(ctx) {
   get('setPosterEngine', (req, res) => {
     const e = str(req.query.engine);
     if (e !== 'rpdb' && e !== 'local') return fail(res, 'Unknown poster engine');
-    if (e === 'local' && !cfg().mdblistKey) return fail(res, 'Add an MDBList API key first (API Keys).');
+    if (e === 'local' && !mdblistKeysOf(cfg()).length) return fail(res, 'Add an MDBList API key first (API Keys).');
     if (e === 'rpdb' && !cfg().apiKey) return fail(res, 'Add an RPDB API key first (API Keys).');
     cfg().posterEngine = e;
     store.save();
@@ -558,7 +588,7 @@ export function createApp(ctx) {
     const item = await previewItem(q);
     const root = item?.root ?? str(q.folder);
     const imdb = item?.imdb;
-    if (item && c.mdblistKey) {
+    if (item && mdblistKeysOf(c).length) {
       const args = { cfg: c, matcher, type: q.type, imdb, root, design: d, width, badgeCsv: item.badgeCsv };
       const buf = kind === 'poster' ? await renderLocalPoster({ ...args, over }) : matcher.hasTmdb() ? await renderLocalArt({ ...args, kind }) : null;
       if (buf) return buf;
@@ -820,7 +850,7 @@ export function createApp(ctx) {
 
   get('poster', async (req, res) => {
     const { type, name } = req.query;
-    const local = cfg().posterEngine === 'local' && cfg().mdblistKey;
+    const local = cfg().posterEngine === 'local' && mdblistKeysOf(cfg()).length > 0;
     if (!cfg().apiKey && !local) return res.status(403).type('text/plain').send('API Key is Invalid');
     if ((type !== 'movie' && type !== 'series') || !has(name)) return res.status(400).type('text/plain').send('Bad request');
     const imdb = await resolveImdb(type, name);

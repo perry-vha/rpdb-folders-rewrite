@@ -4,6 +4,7 @@ import { log, sleep, isVideoFile, isDirectoryNameVisible, findVideos, stripExt }
 import { buildImageUrl, RPDB_BASE } from './rpdb.js';
 import { getProbeData, autoBadgesFromProbe } from './badges.js';
 import { renderLocalPoster, renderLocalArt } from './local-poster.js';
+import { MdblistLimitError, mdblistKeysOf } from './ratings.js';
 
 const exists = (p) => fs.promises.access(p).then(() => true, () => false);
 
@@ -53,6 +54,8 @@ export class Engine {
     this.queueDelay = process.env.RPDB_QUEUE_DELAY_MS !== undefined ? Number(process.env.RPDB_QUEUE_DELAY_MS) : 1000;
     this.writeRetryMs = Number(process.env.RPDB_WRITE_RETRY_MS) || 4 * 3600 * 1000;
     this.idleWaiters = [];
+    this.pausedUntil = 0;
+    this.wake = null;
   }
 
   // Persisted so "Added images to N folders" survives restarts
@@ -69,7 +72,7 @@ export class Engine {
   }
 
   get queueLength() {
-    return this.queue.length + (this.running ? 1 : 0);
+    return this.queue.length + (this.running && !this.pausedUntil ? 1 : 0);
   }
 
   /** Find the media folder holding an item of this type. */
@@ -120,6 +123,26 @@ export class Engine {
   cancel() {
     this.queue = [];
     this.scanLeft = 0;
+    this.resume();
+  }
+
+  /** End a rate-limit pause early (keys changed, queue cancelled). */
+  resume() {
+    this.wake?.();
+  }
+
+  async pauseUntil(until, name) {
+    this.pausedUntil = until;
+    log(`All MDBList keys reached their request limit. Paused at ${name} until ${new Date(until).toLocaleString('en-US')}`);
+    let timer;
+    await new Promise((r) => {
+      this.wake = r;
+      // setTimeout caps at ~24.8 days; a longer wait simply pauses again
+      timer = setTimeout(r, Math.min(Math.max(0, until - Date.now()) + 5000, 2 ** 31 - 1));
+    });
+    clearTimeout(timer);
+    this.wake = null;
+    this.pausedUntil = 0;
   }
 
   async loop() {
@@ -130,6 +153,12 @@ export class Engine {
       try {
         usedApi = await this.processItem(item);
       } catch (e) {
+        if (e instanceof MdblistLimitError) {
+          this.queue.unshift(item);
+          await this.pauseUntil(e.until, item.name);
+          if (this.queue.length) log(`Resuming at ${this.queue[0].name}`);
+          continue;
+        }
         log(`Error processing ${item.name}: ${e.message}`);
       }
       if (item.scan && this.scanLeft > 0) this.scanLeft--;
@@ -190,6 +219,7 @@ export class Engine {
       const args = { cfg: this.cfg, matcher: this.matcher, type, imdb, root, badgeCsv };
       buf = kind === 'poster' ? await renderLocalPoster(args) : await renderLocalArt({ ...args, kind });
     } catch (e) {
+      if (e instanceof MdblistLimitError) throw e;
       log(`Could not render ${label.toLowerCase()} for ${name}: ${e.message}`);
       return 'error';
     }
@@ -259,7 +289,7 @@ export class Engine {
 
     const local = c.posterEngine === 'local';
     if (local) {
-      if (!c.mdblistKey) {
+      if (!mdblistKeysOf(c).length) {
         log('The local engine needs an MDBList API Key');
         return false;
       }

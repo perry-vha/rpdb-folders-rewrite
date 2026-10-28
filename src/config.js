@@ -43,7 +43,7 @@ export function defaultConfig() {
     ignoreInitialScan: false, usePolling: false, pollingInterval: 100, baseUrl: '/', checkForLocalImdbId: false,
     overwriteProbeData: false, plexDelayType: false, plexRefreshDelay: 0, plexTodHour: 1, plexTodMin: 0,
     plexTodAmPm: 'AM', plexDetect: 1, useWebhook: false, webhookDelay: 0, retryFrequency: 1, lastRetryMonth: -1,
-    retryNewerThanMonths: 6, tmdbKey: '', clientId: '', mdblistKey: '',
+    retryNewerThanMonths: 6, tmdbKey: '', clientId: '', mdblistKeys: [],
     posterEngine: 'rpdb', localDesign: null, folderDesigns: {}, itemDesigns: {}, designTemplates: {},
     lastOverwrite: { movie: 0, series: 0 }, lastFullUpdate: { movie: 0, series: 0 },
     mediaFolders: both([]), overwriteMatches: both({}), imdbCache: both({}), unmatched: both({}),
@@ -99,6 +99,11 @@ export class ConfigStore {
       }
     }
     this.data = mergeDefaults(stored);
+    if ('mdblistKey' in this.data) {
+      const old = this.data.mdblistKey;
+      if (old && !this.data.mdblistKeys.includes(old)) this.data.mdblistKeys.unshift(old);
+      delete this.data.mdblistKey;
+    }
     if (!this.data.clientId) this.data.clientId = crypto.randomUUID();
     this.save();
   }

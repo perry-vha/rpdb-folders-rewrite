@@ -196,16 +196,40 @@ test('create poster resolves the ID and image from IMDb URL, TMDB URL, folder ma
   assert.equal(data.ratings, 'imdb:9.0');
 });
 
-test('MDBList key and ratings', async () => {
+test('MDBList keys rotate past a rate-limited key', async () => {
   const folder = encodeURIComponent('The Matrix (1999)');
   assert.match((await j(`ratings?type=movie&name=${folder}`)).message, /MDBList API key/);
   assert.equal((await j('setMdblistKey?key=wrong')).success, false);
-  assert.equal((await j('setMdblistKey?key=mdb-key')).mdblistKeySet, true);
+  assert.equal((await j('setMdblistKey?key=mdb-limited')).mdblistKeySet, true);
+  assert.equal((await j('setMdblistKey?key=mdb-limited')).success, false);
+  const added = await j('setMdblistKey?key=mdb-key');
+  assert.deepEqual(added.mdblistKeys.map((k) => k.prefix), ['mdb', 'mdb']);
   assert.equal((await j('getSettings')).mdblistKeySet, true);
   const r = await j(`ratings?type=movie&name=${folder}`);
   assert.equal(r.success, true);
   assert.deepEqual(r.badges.map((b) => [b.key, b.value]), [['imdb', '8.7'], ['rt', '83%'], ['mdblist', '86']]);
-  assert.ok(!mock.requests.some((u) => u.includes('/imdb/movie/') && !u.includes('apikey=mdb-key')));
+  const s = await j('getSettings');
+  assert.ok(s.mdblistKeys[0].limitedUntil > Date.now() + 3500 * 1000);
+  assert.equal(s.mdblistKeys[1].limitedUntil, 0);
+  assert.equal(mock.requests.filter((u) => u.startsWith('/imdb/movie/tt0133093?apikey=mdb-limited')).length, 1);
+});
+
+test('queue pauses at the title when every MDBList key is limited and resumes when a key is added', async () => {
+  const engine = app.ctx.engine;
+  const alien = 'Alien.1979.1080p.BluRay.x264';
+  assert.equal((await j('removeMdblistKey?index=1')).mdblistKeys.length, 1);
+  assert.equal((await j('setPosterEngine?engine=local')).success, true);
+  engine.fetchItem('movie', alien, { overwrite: true });
+  assert.ok(await waitFor(() => engine.pausedUntil > Date.now()));
+  assert.equal(engine.queue[0].name, alien);
+  const poll = await j('pollData');
+  assert.ok(poll.mdblistPausedUntil > Date.now());
+  assert.equal(poll.scanItems, 1);
+  assert.equal((await j('setMdblistKey?key=mdb-key')).success, true);
+  await engine.idle();
+  assert.equal(engine.pausedUntil, 0);
+  assert.ok(mock.requests.some((u) => u.startsWith('/imdb/movie/tt0078748?apikey=mdb-key')));
+  assert.equal((await j('setPosterEngine?engine=rpdb')).success, true);
 });
 
 test('poster designer: designs, templates, live preview and local rendering', async () => {

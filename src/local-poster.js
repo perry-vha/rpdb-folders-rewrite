@@ -1,4 +1,4 @@
-import { mdblistRatings } from './ratings.js';
+import { mdblistRatings, mdblistKeysOf } from './ratings.js';
 import { renderPoster, renderBackdrop, renderLogo, ratingItems, createPosterScores } from './compose.js';
 import { sanitizeDesign, designFromRpdb, rpdbOrder, DESIGN_DEFAULTS } from './look.js';
 import { resolveBadgeTags } from './media-badges.js';
@@ -102,9 +102,9 @@ export function mediaFor(cfg, { kind = 'poster', imdb, root, badgeCsv, info, ove
  * Create Poster choices use their own ratings, certifications and poster type's rating order.
  */
 export async function renderLocalPoster({ cfg, matcher, type, imdb, root, design, width, badgeCsv, over = {} }) {
-  if (!cfg.mdblistKey) throw new Error('Local posters need an MDBList API key (API Keys).');
+  if (!mdblistKeysOf(cfg).length) throw new Error('Local posters need an MDBList API key (API Keys).');
   let d = sanitizeDesign(design || designFor(cfg, root, imdb, type));
-  const data = await mdblistRatings(cfg.mdblistKey, type, imdb);
+  const data = await mdblistRatings(mdblistKeysOf(cfg), type, imdb);
   const url = await artUrlFor({ cfg, matcher, type, imdb, data, design: d });
   if (!url) return null;
   const art = await fetchArt(url);
@@ -122,10 +122,10 @@ export async function renderLocalPoster({ cfg, matcher, type, imdb, root, design
 
 /** Backdrop (JPEG) or logo (PNG) for an item from TMDB artwork + MDBList ratings; null when TMDB has none. */
 export async function renderLocalArt({ cfg, matcher, kind, type, imdb, root, design, width, badgeCsv }) {
-  if (!cfg.mdblistKey) throw new Error('Local images need an MDBList API key (API Keys).');
+  if (!mdblistKeysOf(cfg).length) throw new Error('Local images need an MDBList API key (API Keys).');
   if (!matcher?.hasTmdb()) throw new Error('Local backdrops and logos need a TMDB API key (API Keys).');
   const d = sanitizeDesign(design || designFor(cfg, root, imdb, type));
-  const data = await mdblistRatings(cfg.mdblistKey, type, imdb);
+  const data = await mdblistRatings(mdblistKeysOf(cfg), type, imdb);
   const choice = await matcher.artChoices(type, imdb, kind === 'logo' ? cfg.posterLang?.[type] || 'en' : 'en');
   const file = kind === 'logo' ? choice.logo : choice.backdrop;
   if (!file) return null;

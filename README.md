@@ -96,6 +96,8 @@ Enter keys in the UI under **API Keys**. They are stored in the local config dir
 
 TMDB keys are free from [themoviedb.org/settings/api](https://www.themoviedb.org/settings/api) and MDBList keys from [mdblist.com/preferences](https://mdblist.com/preferences/). The `TMDB_API_KEY` environment variable overrides the UI value.
 
+You can save up to 5 MDBList keys. When one reaches its daily request limit, the next key is used. When every key has reached its limit, the queue pauses at the current title and carries on when the first limit resets, or straight away if you add another key.
+
 ### Config location
 
 | Platform | Path |

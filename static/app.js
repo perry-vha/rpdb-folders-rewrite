@@ -222,13 +222,17 @@ async function checkUpdate() {
   const page = document.querySelector('.page');
   if (page) page.prepend(banner); else $app.prepend(banner);
 }
+function scanText(d) {
+  if (d.mdblistPausedUntil) return `Paused: all MDBList keys reached their limit, resuming ${new Date(d.mdblistPausedUntil).toLocaleString()} (${d.scanItems} items in queue)`;
+  return d.scanItems ? `Scanning (${d.scanItems} items in queue)` : 'Idle, not scanning';
+}
 function startPolling() {
   clearInterval(pollTimer);
   const tick = async () => {
     const d = await fetch(url('pollData')).then((r) => r.json()).catch(() => null);
     if (!d || !d.success) return;
     lastPoll = d;
-    document.querySelectorAll('.js-scan').forEach((e) => { e.textContent = d.scanItems ? `Scanning (${d.scanItems} items in queue)` : 'Idle, not scanning'; });
+    document.querySelectorAll('.js-scan').forEach((e) => { e.textContent = scanText(d); });
     document.querySelectorAll('.js-history').forEach((e) => { e.textContent = `Added images to ${d.historyCount} folders.`; });
     document.querySelectorAll('.js-last').forEach((e) => { e.textContent = `Last full scan started: ${dateText(d.lastFullUpdate)}`; });
     document.querySelectorAll('.js-plex').forEach((e) => { e.textContent = `Status: ${d.plexConnected ? 'Connected' : 'Not Connected'}`; });
@@ -349,7 +353,7 @@ async function scanSettings() {
   const msList = (arr) => arr.map((n) => [n, n === 0 ? 'None' : n < 1000 ? `${n}ms` : n < 60000 ? `${n / 1000}s` : `${n / 60000}m`]);
   const pollList = [100, 500, 1000, 3000, 5000, 7000, 10000, 15000, 20000].map((n) => [n, n < 1000 ? `${n}ms` : `${n / 1000}s`]);
   view('Scan Settings',
-    h('p', { class: 'js-scan' }, lastPoll.scanItems ? `Scanning (${lastPoll.scanItems} items in queue)` : 'Idle, not scanning'),
+    h('p', { class: 'js-scan' }, scanText(lastPoll)),
     h('p', { class: 'muted js-last' }, `Last full scan started: ${dateText(lastPoll.lastFullUpdate)}`),
     btn('Run Full Scan', () => scan('runFullScan')),
     btn('Force Overwrite Scan', () => confirm('This may deplete your monthly requests. Continue?') && scan('forceOverwriteScan'), 'danger'),
@@ -671,24 +675,38 @@ async function posterDesigner({ preview = null, target = 'global', back = mainMe
     btn('Back', back, 'secondary'));
 }
 
-// ---------- MDBList key ----------
+// ---------- MDBList keys ----------
 function mdblistKeySection() {
+  const box = h('div');
   const status = h('p');
-  const drawStatus = () => { status.className = S.mdblistKeySet ? 'ok' : 'muted'; status.textContent = S.mdblistKeySet ? 'Status: key saved' : 'Status: not set'; };
-  drawStatus();
   const input = h('input', { type: 'password', placeholder: 'MDBList API Key', autocomplete: 'off' });
-  const save = async (key) => {
-    status.className = 'muted'; status.textContent = key ? 'Checking key …' : 'Removing key …';
-    const r = await api('setMdblistKey', { key });
+  const apply = (r) => {
     if (!r.success) { status.className = 'err'; status.textContent = r.message || 'Failed'; return; }
-    S.mdblistKeySet = r.mdblistKeySet; input.value = ''; drawStatus();
+    S.mdblistKeySet = r.mdblistKeySet; S.mdblistKeys = r.mdblistKeys; input.value = ''; draw();
   };
+  const draw = () => {
+    const keys = S.mdblistKeys || [];
+    const max = S.mdblistKeyMax || 5;
+    status.className = keys.length ? 'ok' : 'muted';
+    status.textContent = keys.length ? `Status: ${keys.length} of ${max} keys saved` : 'Status: not set';
+    box.replaceChildren(...keys.map((k, i) => h('div', {},
+      h('span', {}, `Key ${i + 1}: ${k.prefix}… `),
+      h('span', { class: k.limitedUntil ? 'err' : 'muted' }, k.limitedUntil ? `limit reached until ${new Date(k.limitedUntil).toLocaleString()} ` : ''),
+      btn('Remove', async () => { status.className = 'muted'; status.textContent = 'Removing key …'; apply(await api('removeMdblistKey', { index: i })); }, 'secondary'))),
+    keys.length < max ? h('div', {}, input, btn(keys.length ? 'Add Key' : 'Save Key', async () => {
+      const key = input.value.trim();
+      if (!key) return;
+      status.className = 'muted'; status.textContent = 'Checking key …';
+      apply(await api('setMdblistKey', { key }));
+    })) : '');
+  };
+  draw();
   return h('div', {},
-    h('h2', {}, 'MDBList API Key'),
+    h('h2', {}, 'MDBList API Keys'),
     h('p', { class: 'muted' }, 'Required for the local engine. Provides ratings from IMDb, TMDB, Rotten Tomatoes, Metacritic, Trakt, Letterboxd, MyAnimeList, MDBList and Roger Ebert, also shown when editing a poster. Get a free key at ',
       h('a', { href: 'https://mdblist.com/preferences/', target: '_blank', rel: 'noopener' }, 'mdblist.com/preferences'), '.'),
-    input, status,
-    h('div', {}, btn('Save Key', () => input.value.trim() && save(input.value.trim())), S.mdblistKeySet ? btn('Remove Key', () => save(''), 'secondary') : ''));
+    h('p', { class: 'muted' }, `Add up to ${S.mdblistKeyMax || 5} keys. When one reaches its daily request limit the next is used; when all have, scanning pauses at that title and resumes once a limit resets.`),
+    box, status);
 }
 
 function ratingsPanel(type, name) {
