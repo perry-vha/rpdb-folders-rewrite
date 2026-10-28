@@ -51,7 +51,7 @@ It is an independent reimplementation of RPDB Folders. It adds a **local render 
 
 ## Quick start
 
-Requires Node 22.23.4, 24.22.1, 26.12.1 or newer. Earlier releases are affected by the October 2026 Node.js security fixes. Docker and CI use 24.22.1.
+Requires Node 22.23.4, 24.22.1, 26.12.1 or newer. Earlier releases are affected by the October 2026 Node.js security fixes. Docker and CI follow the latest Node release.
 
     git clone <your-repo-url>
     cd rpdb-folders-rewrite
